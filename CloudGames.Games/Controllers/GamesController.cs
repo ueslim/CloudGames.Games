@@ -13,9 +13,11 @@ public class GamesController : ControllerBase
     private readonly GamesDbContext _db;
     private readonly IGamesSearch _search;
     private readonly QueueClient _queue;
-    public GamesController(GamesDbContext db, IGamesSearch search, QueueClient queue)
+    private readonly IPurchaseService _purchaseService;
+    private readonly IRecommendationService _recommendationService;
+    public GamesController(GamesDbContext db, IGamesSearch search, QueueClient queue, IPurchaseService purchaseService, IRecommendationService recommendationService)
     {
-        _db = db; _search = search; _queue = queue;
+        _db = db; _search = search; _queue = queue; _purchaseService = purchaseService; _recommendationService = recommendationService;
     }
 
     [AllowAnonymous]
@@ -98,13 +100,46 @@ public class GamesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize]
+    [HttpPost("{id:guid}/purchase")]
+    public async Task<IActionResult> Purchase(Guid id)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+        var purchaseId = await _purchaseService.StartPurchaseAsync(id, userId);
+        return Accepted(new { purchaseId });
+    }
+
+    [Authorize]
+    [HttpGet("{id:guid}/purchase/{purchaseId:guid}/status")]
+    public async Task<IActionResult> PurchaseStatus(Guid id, Guid purchaseId)
+    {
+        var status = await _purchaseService.GetPurchaseStatusAsync(purchaseId);
+        return Ok(new { purchaseId, status });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("popular")]
+    public async Task<IActionResult> Popular([FromQuery] int top = 10)
+    {
+        var items = await _recommendationService.GetPopularAsync(top);
+        return Ok(items);
+    }
+
+    [Authorize]
+    [HttpGet("recommendations")]
+    public async Task<IActionResult> Recommendations([FromQuery] Guid userId)
+    {
+        var items = await _recommendationService.GetRecommendationsAsync(userId);
+        return Ok(items);
+    }
+
     private async Task AppendEventAndPublishAsync(string type, object payload)
     {
         var json = JsonSerializer.Serialize(payload);
         _db.GameEvents.Add(new GameEvent { Id = Guid.NewGuid(), Type = type, Payload = json, CreatedAt = DateTime.UtcNow });
+        _db.OutboxMessages.Add(new OutboxMessage { Type = type, Payload = json, OccurredAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
-        await _queue.CreateIfNotExistsAsync();
-        await _queue.SendMessageAsync(JsonSerializer.Serialize(new { Type = type, Data = payload }));
     }
 }
 

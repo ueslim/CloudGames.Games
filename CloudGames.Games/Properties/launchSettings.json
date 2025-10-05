@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "Fiap.CloudGames.Games": {
+    "CloudGames.Games": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,

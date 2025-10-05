@@ -1,0 +1,45 @@
+name: Build and Deploy Games API to Azure
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: app-cloudgames-games-api
+  SOLUTION_FILE_PATH: CloudGames.Games.sln
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.SOLUTION_FILE_PATH }}
+
+      - name: Build project
+        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration Release --no-restore
+
+      - name: Publish project
+        run: dotnet publish ${{ env.SOLUTION_FILE_PATH }} --configuration Release --no-build --output './publish'
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: './publish'
+
+
