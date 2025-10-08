@@ -1,10 +1,16 @@
-using Azure.Search.Documents;
-using Azure.Search.Documents.Models;
-using Azure.Storage.Queues;
+using CloudGames.Games.Application.Abstractions;
+using CloudGames.Games.Application.Purchases;
+using CloudGames.Games.Application.Search;
+using CloudGames.Games.Domain.Entities;
+using CloudGames.Games.Infra.Persistence;
+using CloudGames.Games.Infra.Persistence.Outbox;
+using CloudGames.Games.Infra.Persistence.StoredEvents;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+
+namespace CloudGames.Games.Web.Controllers;
 
 [ApiController]
 [Route("/api/games")]
@@ -12,10 +18,13 @@ public class GamesController : ControllerBase
 {
     private readonly GamesDbContext _db;
     private readonly IGamesSearch _search;
-    private readonly QueueClient _queue;
-    public GamesController(GamesDbContext db, IGamesSearch search, QueueClient queue)
+    private readonly IPurchaseService _purchaseService;
+    private readonly IRecommendationService _recommendationService;
+    private readonly ILogger<GamesController> _logger;
+
+    public GamesController(GamesDbContext db, IGamesSearch search, IPurchaseService purchaseService, IRecommendationService recommendationService, ILogger<GamesController> logger)
     {
-        _db = db; _search = search; _queue = queue;
+        _db = db; _search = search; _purchaseService = purchaseService; _recommendationService = recommendationService; _logger = logger;
     }
 
     [AllowAnonymous]
@@ -62,7 +71,7 @@ public class GamesController : ControllerBase
         };
         _db.Games.Add(game);
         await _db.SaveChangesAsync();
-        await AppendEventAndPublishAsync("GameCreated", game);
+        await AppendEventAndOutboxAsync("GameCreated", game);
         return CreatedAtAction(nameof(Get), new { id = game.Id }, game);
     }
 
@@ -82,7 +91,7 @@ public class GamesController : ControllerBase
         if (dto.CoverImageUrl != null) game.CoverImageUrl = dto.CoverImageUrl;
         if (dto.Tags != null) game.TagsJson = JsonSerializer.Serialize(dto.Tags);
         await _db.SaveChangesAsync();
-        await AppendEventAndPublishAsync("GameUpdated", game);
+        await AppendEventAndOutboxAsync("GameUpdated", game);
         return Ok(game);
     }
 
@@ -94,19 +103,68 @@ public class GamesController : ControllerBase
         if (game == null) return NotFound();
         _db.Games.Remove(game);
         await _db.SaveChangesAsync();
-        await AppendEventAndPublishAsync("GameDeleted", new { id });
+        await AppendEventAndOutboxAsync("GameDeleted", new { id });
         return NoContent();
     }
 
-    private async Task AppendEventAndPublishAsync(string type, object payload)
+    [Authorize]
+    [HttpPost("{id:guid}/purchase")]
+    public async Task<IActionResult> Purchase(Guid id)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+        try
+        {
+            _logger.LogInformation("User {UserId} initiating purchase for game {GameId}.", userId, id);
+            var paymentId = await _purchaseService.StartPurchaseAsync(id, userId);
+            return Accepted(new { paymentId });
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadGateway || ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+        {
+            _logger.LogError(ex, "Payments service unavailable when purchasing game {GameId} for user {UserId}.", id, userId);
+            return StatusCode((int)(ex.StatusCode ?? System.Net.HttpStatusCode.BadGateway), new { error = "Payments service unavailable" });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error calling Payments for game {GameId} and user {UserId}.", id, userId);
+            return StatusCode(502, new { error = "Payments service unavailable" });
+        }
+    }
+
+    [Authorize]
+    [HttpGet("{id:guid}/purchase/{purchaseId:guid}/status")]
+    public async Task<IActionResult> PurchaseStatus(Guid id, Guid purchaseId)
+    {
+        var status = await _purchaseService.GetPurchaseStatusAsync(purchaseId);
+        return Ok(new { paymentId = purchaseId, status });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("popular")]
+    public async Task<IActionResult> Popular([FromQuery] int top = 10)
+    {
+        var items = await _recommendationService.GetPopularAsync(top);
+        return Ok(items);
+    }
+
+    [Authorize]
+    [HttpGet("recommendations")]
+    public async Task<IActionResult> Recommendations([FromQuery] Guid userId)
+    {
+        var items = await _recommendationService.GetRecommendationsAsync(userId);
+        return Ok(items);
+    }
+
+    private async Task AppendEventAndOutboxAsync(string type, object payload)
     {
         var json = JsonSerializer.Serialize(payload);
-        _db.GameEvents.Add(new GameEvent { Id = Guid.NewGuid(), Type = type, Payload = json, CreatedAt = DateTime.UtcNow });
+        _db.StoredEvents.Add(new StoredEvent { Type = type, Payload = json, OccurredAt = DateTime.UtcNow });
+        _db.OutboxMessages.Add(new OutboxMessage { Type = type, Payload = json, OccurredAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
-        await _queue.CreateIfNotExistsAsync();
-        await _queue.SendMessageAsync(JsonSerializer.Serialize(new { Type = type, Data = payload }));
     }
 }
 
 public record CreateGameDto(string Title, string Description, string Developer, string Publisher, DateTime ReleaseDate, string Genre, decimal Price, string CoverImageUrl, string[]? Tags);
 public record UpdateGameDto(string? Title, string? Description, string? Developer, string? Publisher, DateTime? ReleaseDate, string? Genre, decimal? Price, string? CoverImageUrl, string[]? Tags);
+
+
