@@ -1,28 +1,80 @@
-# Fiap.CloudGames.Games
+# CloudGames.Games
 
-Games catalog microservice with Azure Cognitive Search integration.
+A clean .NET 8 solution following Clean Architecture principles.
 
-## Run locally
+## Solution Structure
 
-- `dotnet run --project Fiap.CloudGames.Games/Fiap.CloudGames.Games.csproj`
-- Env vars: `ConnectionStrings__GamesDb`, `ConnectionStrings__Storage`, `Jwt__*`, `Search__Endpoint`, `Search__ApiKey`, `Search__IndexName`
-- Swagger: `/swagger`
+The solution consists of the following projects:
 
-## Endpoints
+### CloudGames.Games.Api
+ASP.NET Core Web API project that serves as the entry point for the application.
+- **References**: Application, Domain
+- **Features**:
+  - Swagger/OpenAPI documentation available at `/swagger`
+  - Health check endpoint at `/health`
+  - Sample weather forecast endpoint at `/weatherforecast`
 
-- GET `/api/games` (list)
-- GET `/api/games/{id}` (details)
-- GET `/api/games/search?q=...` (search via ACS)
-- POST `/api/games` (admin)
-- PUT `/api/games/{id}` (admin)
-- DELETE `/api/games/{id}` (admin)
+### CloudGames.Games.Application
+Class library containing application business logic and use cases.
+- **References**: Domain
 
-## OpenAPI export
+### CloudGames.Games.Domain
+Class library containing domain entities, value objects, and domain logic.
+- **References**: None (core domain layer)
 
-- GET `http://localhost:port/swagger/v1/swagger.json` and save to `openapi.games.json`
+### CloudGames.Games.Infrastructure
+Class library containing infrastructure concerns (data access, external services, etc.).
+- **References**: Application, Domain
 
-## Azure setup
+### CloudGames.Games.Tests
+xUnit test project for testing the application.
+- **References**: Application, Domain, Infrastructure
 
-- Azure Cognitive Search (Free): create index `games`
-- Azure Storage Queues: `games-events`
-- Deploy to App Service Free or Container Apps. Configure env vars and App Insights.
+## Project Dependencies
+
+```
+CloudGames.Games.Api
+├── CloudGames.Games.Application
+│   └── CloudGames.Games.Domain
+└── CloudGames.Games.Domain
+
+CloudGames.Games.Infrastructure
+├── CloudGames.Games.Application
+│   └── CloudGames.Games.Domain
+└── CloudGames.Games.Domain
+
+CloudGames.Games.Tests
+├── CloudGames.Games.Application
+│   └── CloudGames.Games.Domain
+├── CloudGames.Games.Domain
+└── CloudGames.Games.Infrastructure
+```
+
+## Getting Started
+
+### Prerequisites
+- .NET 8 SDK
+
+### Building the Solution
+```bash
+dotnet build
+```
+
+### Running the API
+```bash
+dotnet run --project CloudGames.Games.Api
+```
+
+### Running Tests
+```bash
+dotnet test
+```
+
+### Accessing Swagger UI
+Once the API is running, navigate to:
+- `https://localhost:<port>/swagger` (HTTPS)
+- `http://localhost:<port>/swagger` (HTTP)
+
+### Health Check
+Check the application health at:
+- `/health`
