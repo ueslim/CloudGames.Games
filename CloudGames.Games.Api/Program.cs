@@ -80,14 +80,15 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "CloudGames Games API",
+        Title = "CloudGames - API de Jogos",
         Version = "v1",
-        Description = "Games microservice with dual JWT authentication support"
+        Description = "Microserviço de gerenciamento de jogos com autenticação JWT (desenvolvimento e produção via Azure AD)"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme.",
+        Description = "Autenticação JWT usando o esquema Bearer. Insira 'Bearer' [espaço] e então seu token no campo abaixo.\n\n" +
+                      "Exemplo: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
@@ -109,6 +110,14 @@ builder.Services.AddSwaggerGen(c =>
             Array.Empty<string>()
         }
     });
+
+    // Incluir comentários XML
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
 // Register DbContext with SQL Server
@@ -125,6 +134,10 @@ else
 {
     builder.Services.AddScoped<ISearchService, EfSearchService>();
 }
+
+// Register application services
+builder.Services.AddScoped<IGameService, GameService>();
+builder.Services.AddScoped<IPromotionService, PromotionService>();
 
 var app = builder.Build();
 
