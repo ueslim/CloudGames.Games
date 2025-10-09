@@ -8,7 +8,7 @@ namespace CloudGames.Games.Api.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/jogos")]
+[Route("api/games")]
 public class GamesController : ControllerBase
 {
     private readonly IGameService _gameService;
