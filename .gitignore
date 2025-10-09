@@ -36,3 +36,6 @@ node_modules/
 
 # Azurite data (if mapped locally)
 azurite_data/
+
+# Elasticsearch data (docker volumes)
+elasticsearch_data/

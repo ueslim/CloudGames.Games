@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudGames.Games.Infrastructure.Services;
 
-public class SearchService : ISearchService
+public class EfSearchService : ISearchService
 {
     private readonly GamesDbContext _context;
 
-    public SearchService(GamesDbContext context)
+    public EfSearchService(GamesDbContext context)
     {
         _context = context;
     }

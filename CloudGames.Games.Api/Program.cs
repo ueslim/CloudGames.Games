@@ -16,8 +16,18 @@ builder.Services.AddHealthChecks();
 builder.Services.AddDbContext<GamesDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("GamesDb")));
 
-// Register SearchService as scoped (since it depends on DbContext)
-builder.Services.AddScoped<ISearchService, SearchService>();
+// Conditionally register SearchService based on Elastic configuration
+var elasticEndpoint = builder.Configuration["Elastic:Endpoint"];
+if (!string.IsNullOrEmpty(elasticEndpoint))
+{
+    // Use Elasticsearch for search (local development)
+    builder.Services.AddSingleton<ISearchService, ElasticSearchService>();
+}
+else
+{
+    // Use EF Core for search (production/Azure)
+    builder.Services.AddScoped<ISearchService, EfSearchService>();
+}
 
 var app = builder.Build();
 
