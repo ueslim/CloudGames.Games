@@ -21,7 +21,7 @@ public class GameService : IGameService
         return await _context.Games.ToListAsync();
     }
 
-    public async Task<Game?> GetGameByIdAsync(string id)
+    public async Task<Game?> GetGameByIdAsync(Guid id)
     {
         return await _context.Games.FindAsync(id);
     }
@@ -66,7 +66,7 @@ public class GameService : IGameService
         return game;
     }
 
-    public async Task<Game?> UpdateGameAsync(string id, Game game)
+    public async Task<Game?> UpdateGameAsync(Guid id, Game game)
     {
         var existing = await _context.Games.FindAsync(id);
         if (existing == null) return null;
@@ -83,7 +83,7 @@ public class GameService : IGameService
         return existing;
     }
 
-    public async Task<bool> DeleteGameAsync(string id)
+    public async Task<bool> DeleteGameAsync(Guid id)
     {
         var game = await _context.Games.FindAsync(id);
         if (game == null) return false;
@@ -97,7 +97,7 @@ public class GameService : IGameService
         return true;
     }
 
-    public async Task BuyGameAsync(string gameId, string userId)
+    public async Task BuyGameAsync(Guid gameId, string userId)
     {
         var game = await _context.Games.FindAsync(gameId);
         if (game == null)
@@ -144,7 +144,7 @@ public class GameService : IGameService
             .ToListAsync();
 
         // Filtrar por userId e extrair gameIds
-        var gameIds = new List<string>();
+        var gameIds = new List<Guid>();
         foreach (var evt in purchaseEvents)
         {
             try
@@ -155,9 +155,10 @@ public class GameService : IGameService
                 {
                     if (eventData.TryGetProperty("GameId", out var gameIdProp))
                     {
-                        var gameId = gameIdProp.GetString();
-                        if (!string.IsNullOrEmpty(gameId))
+                        if (gameIdProp.TryGetGuid(out var gameId))
+                        {
                             gameIds.Add(gameId);
+                        }
                     }
                 }
             }

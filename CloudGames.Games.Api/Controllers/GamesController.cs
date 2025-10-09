@@ -42,7 +42,7 @@ public class GamesController : ControllerBase
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(Game), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Game>> GetById(string id)
+    public async Task<ActionResult<Game>> GetById(Guid id)
     {
         var game = await _gameService.GetGameByIdAsync(id);
         if (game == null)
@@ -75,7 +75,7 @@ public class GamesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<Game>> Update(string id, [FromBody] Game game)
+    public async Task<ActionResult<Game>> Update(Guid id, [FromBody] Game game)
     {
         var updated = await _gameService.UpdateGameAsync(id, game);
         if (updated == null)
@@ -94,7 +94,7 @@ public class GamesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> Delete(string id)
+    public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _gameService.DeleteGameAsync(id);
         if (!deleted)
@@ -112,7 +112,7 @@ public class GamesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Buy(string id)
+    public async Task<IActionResult> Buy(Guid id)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
                      ?? User.FindFirst("sub")?.Value

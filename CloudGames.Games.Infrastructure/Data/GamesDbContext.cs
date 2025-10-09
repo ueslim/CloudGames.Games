@@ -21,7 +21,6 @@ public class GamesDbContext : DbContext
         modelBuilder.Entity<Game>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasMaxLength(50);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Genre).HasMaxLength(100);
@@ -32,7 +31,6 @@ public class GamesDbContext : DbContext
         modelBuilder.Entity<Promotion>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.GameId).IsRequired().HasMaxLength(50);
             entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
             entity.HasOne(e => e.Game)
                 .WithMany()
