@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CloudGames.Games.Application\CloudGames.Games.Application.csproj" />
     <ProjectReference Include="..\CloudGames.Games.Domain\CloudGames.Games.Domain.csproj" />
+    <ProjectReference Include="..\CloudGames.Games.Infrastructure\CloudGames.Games.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
