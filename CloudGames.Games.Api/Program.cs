@@ -1,3 +1,5 @@
+using Prometheus;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -16,8 +18,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Prometheus metrics middleware
+app.UseHttpMetrics();
+
 // Health check endpoint
 app.MapHealthChecks("/health");
+
+// Prometheus metrics endpoint
+app.MapMetrics();
 
 var summaries = new[]
 {
