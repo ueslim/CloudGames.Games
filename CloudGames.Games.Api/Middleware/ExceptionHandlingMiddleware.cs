@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using CloudGames.Games.Infrastructure.Metrics;
 
 namespace CloudGames.Games.Api.Middleware;
 
@@ -37,13 +38,16 @@ public class ExceptionHandlingMiddleware
             context.Request.Method,
             context.Request.Path);
 
+        // Métricas de erro
+        ApplicationMetrics.Errors.WithLabels(exception.GetType().Name).Inc();
+
         // Return a simple error response
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
         var errorResponse = new
         {
-            error = "An error occurred processing your request.",
+            erro = "Ocorreu um erro ao processar sua requisição",
             timestamp = DateTime.UtcNow
         };
 

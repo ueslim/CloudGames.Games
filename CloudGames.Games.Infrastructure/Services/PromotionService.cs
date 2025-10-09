@@ -1,6 +1,7 @@
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Domain.Entities;
 using CloudGames.Games.Infrastructure.Data;
+using CloudGames.Games.Infrastructure.Metrics;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudGames.Games.Infrastructure.Services;
@@ -27,6 +28,10 @@ public class PromotionService : IPromotionService
     {
         _context.Promotions.Add(promotion);
         await _context.SaveChangesAsync();
+
+        // Métricas
+        ApplicationMetrics.PromotionsCreated.Inc();
+
         return promotion;
     }
 }

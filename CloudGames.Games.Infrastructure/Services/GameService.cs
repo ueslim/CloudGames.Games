@@ -2,6 +2,7 @@ using System.Text.Json;
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Domain.Entities;
 using CloudGames.Games.Infrastructure.Data;
+using CloudGames.Games.Infrastructure.Metrics;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudGames.Games.Infrastructure.Services;
@@ -57,6 +58,11 @@ public class GameService : IGameService
         });
 
         await _context.SaveChangesAsync();
+
+        // Métricas
+        ApplicationMetrics.GamesCreated.Inc();
+        ApplicationMetrics.TotalGames.Inc();
+
         return game;
     }
 
@@ -84,6 +90,10 @@ public class GameService : IGameService
 
         _context.Games.Remove(game);
         await _context.SaveChangesAsync();
+
+        // Métricas
+        ApplicationMetrics.TotalGames.Dec();
+
         return true;
     }
 
@@ -121,6 +131,9 @@ public class GameService : IGameService
         });
 
         await _context.SaveChangesAsync();
+
+        // Métricas
+        ApplicationMetrics.GamesPurchased.Inc();
     }
 
     public async Task<IEnumerable<Game>> GetUserLibraryAsync(string userId)
