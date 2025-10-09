@@ -124,14 +124,17 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<GamesDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("GamesDb")));
 
-// Conditionally register SearchService based on Elastic configuration
+// Register SearchService - ElasticSearch in Development, EF fallback in Production or if Elastic is not configured
 var elasticEndpoint = builder.Configuration["Elastic:Endpoint"];
 if (!string.IsNullOrEmpty(elasticEndpoint))
 {
+    // ElasticSearch is configured - register it
+    // The service itself will handle connection failures gracefully
     builder.Services.AddSingleton<ISearchService, ElasticSearchService>();
 }
 else
 {
+    // No ElasticSearch configured - use EF-based search as fallback
     builder.Services.AddScoped<ISearchService, EfSearchService>();
 }
 

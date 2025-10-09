@@ -1,6 +1,7 @@
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Domain.Entities;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Nest;
 
 namespace CloudGames.Games.Infrastructure.Services;
@@ -8,56 +9,98 @@ namespace CloudGames.Games.Infrastructure.Services;
 public class ElasticSearchService : ISearchService
 {
     private readonly IElasticClient _elasticClient;
+    private readonly ILogger<ElasticSearchService> _logger;
     private readonly string _indexName;
+    private bool _isAvailable;
 
-    public ElasticSearchService(IConfiguration configuration)
+    public ElasticSearchService(IConfiguration configuration, ILogger<ElasticSearchService> logger)
     {
+        _logger = logger;
         var endpoint = configuration["Elastic:Endpoint"];
         _indexName = configuration["Elastic:IndexName"] ?? "games";
+        _isAvailable = false;
 
         if (string.IsNullOrEmpty(endpoint))
         {
-            throw new ArgumentException("Elastic:Endpoint configuration is required for ElasticSearchService");
+            _logger.LogWarning("Elastic:Endpoint configuration is missing. ElasticSearch features will be disabled.");
+            _elasticClient = null!;
+            return;
         }
 
-        var settings = new ConnectionSettings(new Uri(endpoint))
-            .DefaultIndex(_indexName)
-            .DefaultMappingFor<Game>(m => m
-                .IndexName(_indexName)
-                .IdProperty(p => p.Id)
-            );
+        try
+        {
+            var settings = new ConnectionSettings(new Uri(endpoint))
+                .DefaultIndex(_indexName)
+                .DefaultMappingFor<Game>(m => m
+                    .IndexName(_indexName)
+                    .IdProperty(p => p.Id)
+                )
+                .DisableDirectStreaming() // Helps with debugging
+                .RequestTimeout(TimeSpan.FromSeconds(5)); // Timeout for initial connection
 
-        _elasticClient = new ElasticClient(settings);
-        
-        // Ensure the index exists with proper mappings
-        EnsureIndexExistsAsync().GetAwaiter().GetResult();
+            _elasticClient = new ElasticClient(settings);
+            
+            // Ensure the index exists with proper mappings
+            EnsureIndexExistsAsync().GetAwaiter().GetResult();
+            _logger.LogInformation("ElasticSearch service initialized successfully with endpoint: {Endpoint}, index: {IndexName}", endpoint, _indexName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initialize ElasticSearch service. Search features will be unavailable.");
+            _elasticClient = null!;
+            _isAvailable = false;
+        }
     }
 
     private async Task EnsureIndexExistsAsync()
     {
-        var indexExists = await _elasticClient.Indices.ExistsAsync(_indexName);
-        
-        if (!indexExists.Exists)
+        try
         {
-            var createIndexResponse = await _elasticClient.Indices.CreateAsync(_indexName, c => c
-                .Map<Game>(m => m
-                    .AutoMap()
-                    .Properties(p => p
-                        .Text(t => t.Name(n => n.Title).Analyzer("standard"))
-                        .Text(t => t.Name(n => n.Description).Analyzer("standard"))
-                        .Keyword(k => k.Name(n => n.Genre))
-                        .Keyword(k => k.Name(n => n.Publisher))
-                        .Date(d => d.Name(n => n.ReleaseDate))
-                        .Number(n => n.Name(n => n.Price).Type(NumberType.ScaledFloat).ScalingFactor(100))
-                        .Number(n => n.Name(n => n.Rating).Type(NumberType.Double))
-                    )
-                )
-            );
-
-            if (!createIndexResponse.IsValid)
+            var pingResponse = await _elasticClient.PingAsync();
+            if (!pingResponse.IsValid)
             {
-                throw new InvalidOperationException($"Failed to create Elasticsearch index: {createIndexResponse.DebugInformation}");
+                _logger.LogWarning("Failed to ping Elasticsearch: {Error}", pingResponse.DebugInformation);
+                _isAvailable = false;
+                return;
             }
+
+            var indexExists = await _elasticClient.Indices.ExistsAsync(_indexName);
+            
+            if (!indexExists.Exists)
+            {
+                _logger.LogInformation("Creating Elasticsearch index: {IndexName}", _indexName);
+                
+                var createIndexResponse = await _elasticClient.Indices.CreateAsync(_indexName, c => c
+                    .Map<Game>(m => m
+                        .AutoMap()
+                        .Properties(p => p
+                            .Text(t => t.Name(n => n.Title).Analyzer("standard"))
+                            .Text(t => t.Name(n => n.Description).Analyzer("standard"))
+                            .Keyword(k => k.Name(n => n.Genre))
+                            .Keyword(k => k.Name(n => n.Publisher))
+                            .Date(d => d.Name(n => n.ReleaseDate))
+                            .Number(n => n.Name(n => n.Price).Type(NumberType.ScaledFloat).ScalingFactor(100))
+                            .Number(n => n.Name(n => n.Rating).Type(NumberType.Double))
+                        )
+                    )
+                );
+
+                if (!createIndexResponse.IsValid)
+                {
+                    _logger.LogError("Failed to create Elasticsearch index: {Error}", createIndexResponse.DebugInformation);
+                    _isAvailable = false;
+                    return;
+                }
+                
+                _logger.LogInformation("Successfully created Elasticsearch index: {IndexName}", _indexName);
+            }
+            
+            _isAvailable = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ensuring Elasticsearch index exists");
+            _isAvailable = false;
         }
     }
 
@@ -65,6 +108,12 @@ public class ElasticSearchService : ISearchService
     {
         if (string.IsNullOrWhiteSpace(query))
         {
+            return Enumerable.Empty<Game>();
+        }
+
+        if (!_isAvailable || _elasticClient == null)
+        {
+            _logger.LogWarning("Elasticsearch is not available. Search cannot be performed.");
             return Enumerable.Empty<Game>();
         }
 
@@ -89,44 +138,98 @@ public class ElasticSearchService : ISearchService
 
             if (!searchResponse.IsValid)
             {
-                throw new InvalidOperationException($"Elasticsearch query failed: {searchResponse.DebugInformation}");
+                _logger.LogError("Elasticsearch query failed: {Error}", searchResponse.DebugInformation);
+                return Enumerable.Empty<Game>();
             }
 
             return searchResponse.Documents;
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Error searching games in Elasticsearch: {ex.Message}", ex);
+            _logger.LogError(ex, "Error searching games in Elasticsearch");
+            return Enumerable.Empty<Game>();
         }
     }
 
     public async Task IndexGameAsync(Game game, CancellationToken cancellationToken = default)
     {
-        var response = await _elasticClient.IndexDocumentAsync(game, cancellationToken);
-        
-        if (!response.IsValid)
+        if (!_isAvailable || _elasticClient == null)
         {
-            throw new InvalidOperationException($"Failed to index game: {response.DebugInformation}");
+            _logger.LogWarning("Elasticsearch is not available. Cannot index game: {GameId}", game.Id);
+            return;
+        }
+
+        try
+        {
+            var response = await _elasticClient.IndexDocumentAsync(game, cancellationToken);
+            
+            if (!response.IsValid)
+            {
+                _logger.LogError("Failed to index game {GameId}: {Error}", game.Id, response.DebugInformation);
+            }
+            else
+            {
+                _logger.LogDebug("Successfully indexed game {GameId}", game.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error indexing game {GameId}", game.Id);
         }
     }
 
     public async Task IndexGamesAsync(IEnumerable<Game> games, CancellationToken cancellationToken = default)
     {
-        var response = await _elasticClient.IndexManyAsync(games, _indexName, cancellationToken);
-        
-        if (!response.IsValid)
+        if (!_isAvailable || _elasticClient == null)
         {
-            throw new InvalidOperationException($"Failed to bulk index games: {response.DebugInformation}");
+            _logger.LogWarning("Elasticsearch is not available. Cannot bulk index games.");
+            return;
+        }
+
+        try
+        {
+            var gamesList = games.ToList();
+            var response = await _elasticClient.IndexManyAsync(gamesList, _indexName, cancellationToken);
+            
+            if (!response.IsValid)
+            {
+                _logger.LogError("Failed to bulk index games: {Error}", response.DebugInformation);
+            }
+            else
+            {
+                _logger.LogInformation("Successfully indexed {Count} games", gamesList.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error bulk indexing games");
         }
     }
 
     public async Task DeleteGameAsync(string gameId, CancellationToken cancellationToken = default)
     {
-        var response = await _elasticClient.DeleteAsync<Game>(gameId, d => d.Index(_indexName), cancellationToken);
-        
-        if (!response.IsValid && response.Result != Result.NotFound)
+        if (!_isAvailable || _elasticClient == null)
         {
-            throw new InvalidOperationException($"Failed to delete game from index: {response.DebugInformation}");
+            _logger.LogWarning("Elasticsearch is not available. Cannot delete game: {GameId}", gameId);
+            return;
+        }
+
+        try
+        {
+            var response = await _elasticClient.DeleteAsync<Game>(gameId, d => d.Index(_indexName), cancellationToken);
+            
+            if (!response.IsValid && response.Result != Result.NotFound)
+            {
+                _logger.LogError("Failed to delete game {GameId} from index: {Error}", gameId, response.DebugInformation);
+            }
+            else
+            {
+                _logger.LogDebug("Successfully deleted game {GameId} from index", gameId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting game {GameId} from index", gameId);
         }
     }
 }
