@@ -4,16 +4,24 @@ using CloudGames.Games.Domain.Entities;
 using CloudGames.Games.Infrastructure.Data;
 using CloudGames.Games.Infrastructure.Metrics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CloudGames.Games.Infrastructure.Services;
 
 public class GameService : IGameService
 {
     private readonly GamesDbContext _context;
+    private readonly ISearchService? _searchService;
+    private readonly ILogger<GameService> _logger;
 
-    public GameService(GamesDbContext context)
+    public GameService(
+        GamesDbContext context, 
+        ILogger<GameService> logger,
+        ISearchService? searchService = null)
     {
         _context = context;
+        _logger = logger;
+        _searchService = searchService;
     }
 
     public async Task<IEnumerable<Game>> GetAllGamesAsync()
@@ -63,6 +71,9 @@ public class GameService : IGameService
         ApplicationMetrics.GamesCreated.Inc();
         ApplicationMetrics.TotalGames.Inc();
 
+        // Index in Elasticsearch (Development only)
+        await IndexGameInElasticsearchAsync(game);
+
         return game;
     }
 
@@ -80,6 +91,10 @@ public class GameService : IGameService
         existing.Rating = game.Rating;
 
         await _context.SaveChangesAsync();
+
+        // Re-index in Elasticsearch (Development only)
+        await IndexGameInElasticsearchAsync(existing);
+
         return existing;
     }
 
@@ -93,6 +108,9 @@ public class GameService : IGameService
 
         // Métricas
         ApplicationMetrics.TotalGames.Dec();
+
+        // Remove from Elasticsearch index (Development only)
+        await DeleteGameFromElasticsearchAsync(id);
 
         return true;
     }
@@ -172,6 +190,44 @@ public class GameService : IGameService
         return await _context.Games
             .Where(g => gameIds.Contains(g.Id))
             .ToListAsync();
+    }
+
+    /// <summary>
+    /// Indexa um jogo no Elasticsearch (apenas em Development quando ElasticSearchService está ativo)
+    /// </summary>
+    private async Task IndexGameInElasticsearchAsync(Game game)
+    {
+        if (_searchService is ElasticSearchService elasticService)
+        {
+            try
+            {
+                await elasticService.IndexGameAsync(game);
+                _logger.LogDebug("Jogo {GameId} indexado no Elasticsearch", game.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao indexar jogo {GameId} no Elasticsearch. A operação continuará normalmente.", game.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Remove um jogo do índice do Elasticsearch (apenas em Development quando ElasticSearchService está ativo)
+    /// </summary>
+    private async Task DeleteGameFromElasticsearchAsync(Guid gameId)
+    {
+        if (_searchService is ElasticSearchService elasticService)
+        {
+            try
+            {
+                await elasticService.DeleteGameAsync(gameId.ToString());
+                _logger.LogDebug("Jogo {GameId} removido do índice do Elasticsearch", gameId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao remover jogo {GameId} do índice do Elasticsearch. A operação continuará normalmente.", gameId);
+            }
+        }
     }
 }
 

@@ -126,21 +126,35 @@ builder.Services.AddDbContext<GamesDbContext>(options =>
 
 // Register SearchService - ElasticSearch in Development, EF fallback in Production or if Elastic is not configured
 var elasticEndpoint = builder.Configuration["Elastic:Endpoint"];
+var elasticIndexName = builder.Configuration["Elastic:IndexName"];
+
 if (!string.IsNullOrEmpty(elasticEndpoint))
 {
     // ElasticSearch is configured - register it
     // The service itself will handle connection failures gracefully
     builder.Services.AddSingleton<ISearchService, ElasticSearchService>();
+    Log.Information("Search Service: ElasticSearchService configured");
+    Log.Information("Endpoint: {ElasticEndpoint}", elasticEndpoint);
+    Log.Information("Index: {IndexName}", elasticIndexName ?? "games");
+    Log.Information("Requires Elasticsearch running (Docker: docker-compose up -d)");
 }
 else
 {
     // No ElasticSearch configured - use EF-based search as fallback
     builder.Services.AddScoped<ISearchService, EfSearchService>();
+    Log.Information("Search Service: EfSearchService (Entity Framework)");
+    Log.Information("Using SQL Server for search queries");
+    Log.Information("No additional infrastructure required");
 }
 
 // Register application services
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IPromotionService, PromotionService>();
+
+#if DEBUG
+// Register Elasticsearch auto-sync service (Development only)
+builder.Services.AddHostedService<CloudGames.Games.Api.Services.ElasticsearchSyncService>();
+#endif
 
 var app = builder.Build();
 

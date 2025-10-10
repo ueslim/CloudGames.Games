@@ -1,5 +1,6 @@
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Domain.Entities;
+using CloudGames.Games.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -160,5 +161,25 @@ public class GamesController : ControllerBase
                 new { mensagem = "Ocorreu um erro ao buscar jogos" });
         }
     }
+
+#if DEBUG
+    /// <summary>
+    /// Sincroniza todos os jogos do banco de dados para o Elasticsearch (apenas Development)
+    /// </summary>
+    [HttpPost("sync-search-index")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SyncSearchIndex()
+    {
+        if (_searchService is not ElasticSearchService elasticService)
+        {
+            return Ok(new { mensagem = "Elasticsearch não está configurado" });
+        }
+
+        var games = await _gameService.GetAllGamesAsync();
+        await elasticService.IndexGamesAsync(games);
+        
+        return Ok(new { count = games.Count() });
+    }
+#endif
 }
 
