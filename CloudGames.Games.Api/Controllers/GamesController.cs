@@ -107,7 +107,7 @@ public class GamesController : ControllerBase
     /// <summary>
     /// Compra um jogo para o usuário autenticado
     /// </summary>
-    [HttpPost("{id}/comprar")]
+    [HttpPost("{id}/purchase")]
     [Authorize(Roles = "User,Administrator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -136,7 +136,7 @@ public class GamesController : ControllerBase
     /// <summary>
     /// Busca jogos por termo de pesquisa
     /// </summary>
-    [HttpGet("buscar")]
+    [HttpGet("search")]
     [ProducesResponseType(typeof(IEnumerable<Game>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<IEnumerable<Game>>> Search(

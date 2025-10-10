@@ -7,7 +7,7 @@ namespace CloudGames.Games.Api.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/promocoes")]
+[Route("api/promotions")]
 public class PromotionsController : ControllerBase
 {
     private readonly IPromotionService _promotionService;

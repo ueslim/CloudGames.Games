@@ -7,7 +7,7 @@ namespace CloudGames.Games.Api.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/usuarios")]
+[Route("api/users")]
 public class LibraryController : ControllerBase
 {
     private readonly IGameService _gameService;
@@ -25,7 +25,7 @@ public class LibraryController : ControllerBase
     /// <remarks>
     /// A biblioteca é construída a partir do histórico de eventos de compra (event sourcing).
     /// </remarks>
-    [HttpGet("{userId}/biblioteca")]
+    [HttpGet("{userId}/library")]
     [ProducesResponseType(typeof(IEnumerable<Game>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<Game>>> GetUserLibrary(string userId)
     {
