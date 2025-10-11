@@ -162,9 +162,12 @@ var app = builder.Build();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
 
+// Enable Swagger in all environments for APIM integration
+app.UseSwagger();
+
+// Swagger UI only in Development
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
     app.UseSwaggerUI();
 }
 
