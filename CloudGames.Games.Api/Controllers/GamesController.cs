@@ -1,13 +1,10 @@
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Domain.Entities;
 using CloudGames.Games.Infrastructure.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace CloudGames.Games.Api.Controllers;
 
-[Authorize]
 [ApiController]
 [Route("api/games")]
 public class GamesController : ControllerBase
@@ -53,13 +50,10 @@ public class GamesController : ControllerBase
     }
 
     /// <summary>
-    /// Cria um novo jogo (apenas administradores)
+    /// Cria um novo jogo
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Administrator")]
     [ProducesResponseType(typeof(Game), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<Game>> Create([FromBody] Game game)
     {
         var created = await _gameService.CreateGameAsync(game);
@@ -68,14 +62,11 @@ public class GamesController : ControllerBase
     }
 
     /// <summary>
-    /// Atualiza um jogo existente (apenas administradores)
+    /// Atualiza um jogo existente
     /// </summary>
     [HttpPut("{id}")]
-    [Authorize(Roles = "Administrator")]
     [ProducesResponseType(typeof(Game), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<Game>> Update(Guid id, [FromBody] Game game)
     {
         var updated = await _gameService.UpdateGameAsync(id, game);
@@ -87,14 +78,11 @@ public class GamesController : ControllerBase
     }
 
     /// <summary>
-    /// Remove um jogo (apenas administradores)
+    /// Remove um jogo
     /// </summary>
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Administrator")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _gameService.DeleteGameAsync(id);
@@ -106,21 +94,21 @@ public class GamesController : ControllerBase
     }
 
     /// <summary>
-    /// Compra um jogo para o usuário autenticado
+    /// Compra um jogo para o usuário
     /// </summary>
     [HttpPost("{id}/purchase")]
-    [Authorize(Roles = "User,Administrator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Buy(Guid id)
+    public async Task<IActionResult> Buy(Guid id, [FromHeader] string? userId)
     {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
-                     ?? User.FindFirst("sub")?.Value
-                     ?? User.Identity?.Name;
-
+        // In production, APIM validates the user and passes user info via headers
+        // In development, userId can be passed via header for testing
         if (string.IsNullOrEmpty(userId))
-            return Unauthorized(new { mensagem = "Usuário não identificado no token" });
+        {
+            // For development/testing, use a default user ID
+            userId = "dev-user-001";
+            _logger.LogWarning("No userId provided, using default for development: {UserId}", userId);
+        }
 
         try
         {
@@ -166,7 +154,6 @@ public class GamesController : ControllerBase
     /// Sincroniza jogos para o Elasticsearch (apenas quando configurado)
     /// </summary>
     [HttpPost("sync-search-index")]
-    [Authorize(Roles = "Administrator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> SyncSearchIndex()
     {

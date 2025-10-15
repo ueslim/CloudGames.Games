@@ -2,13 +2,10 @@ using CloudGames.Games.Api.Middleware;
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Infrastructure.Data;
 using CloudGames.Games.Infrastructure.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Prometheus;
 using Serilog;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,93 +19,19 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHealthChecks();
 
-// JWT Authentication Configuration
-var jwtKey = builder.Configuration["Jwt:Key"];
-var jwtAuthority = builder.Configuration["Jwt:Authority"];
-var jwtAudience = builder.Configuration["Jwt:Audience"];
-var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+// Authentication is handled by API Management (APIM) in production
+// No authentication middleware is required in the microservice
+Log.Information("Authentication: Disabled - APIM handles authentication and authorization");
+Log.Information("Security: All endpoints are accessible without JWT validation in this microservice");
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.SaveToken = true;
-
-        if (!string.IsNullOrWhiteSpace(jwtKey))
-        {
-            // Development Mode: Symmetric Key Validation
-            options.RequireHttpsMetadata = false;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-                ValidateIssuer = true,
-                ValidIssuer = jwtIssuer,
-                ValidateAudience = true,
-                ValidAudience = jwtAudience,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
-            };
-        }
-        else if (!string.IsNullOrWhiteSpace(jwtAuthority))
-        {
-            // Production Mode: Azure AD Validation
-            options.RequireHttpsMetadata = true;
-            options.Authority = jwtAuthority;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidAudience = jwtAudience,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ClockSkew = TimeSpan.Zero
-            };
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                "JWT configuration is missing. Please configure either:\n" +
-                "  - Development: Jwt:Key, Jwt:Issuer, Jwt:Audience (symmetric key)\n" +
-                "  - Production: Jwt:Authority, Jwt:Audience (Azure AD)");
-        }
-    });
-
-builder.Services.AddAuthorization();
-
-// Swagger Configuration with JWT Bearer Support
+// Swagger Configuration - No authentication required (APIM handles it)
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "CloudGames - API de Jogos",
         Version = "v1",
-        Description = "Microserviço de gerenciamento de jogos com autenticação JWT (desenvolvimento e produção via Azure AD)"
-    });
-
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Description = "Autenticação JWT usando o esquema Bearer. Insira 'Bearer' [espaço] e então seu token no campo abaixo.\n\n" +
-                      "Exemplo: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "Bearer",
-        BearerFormat = "JWT"
-    });
-
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
+        Description = "Microserviço de gerenciamento de jogos. Autenticação é gerenciada pelo API Management (APIM)."
     });
 
     // Incluir comentários XML
@@ -172,8 +95,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseAuthentication();
-app.UseAuthorization();
 app.UseHttpMetrics();
 
 app.MapHealthChecks("/health");

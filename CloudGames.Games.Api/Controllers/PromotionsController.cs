@@ -1,11 +1,9 @@
 using CloudGames.Games.Application.Interfaces;
 using CloudGames.Games.Domain.Entities;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CloudGames.Games.Api.Controllers;
 
-[Authorize]
 [ApiController]
 [Route("api/promotions")]
 public class PromotionsController : ControllerBase
@@ -32,13 +30,10 @@ public class PromotionsController : ControllerBase
     }
 
     /// <summary>
-    /// Cria uma nova promoção (apenas administradores)
+    /// Cria uma nova promoção
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Administrator")]
     [ProducesResponseType(typeof(Promotion), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<Promotion>> CreatePromotion([FromBody] Promotion promotion)
     {
         if (promotion.Id == Guid.Empty)
