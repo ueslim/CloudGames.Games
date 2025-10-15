@@ -3,7 +3,6 @@ using CloudGames.Games.Infrastructure.Services;
 
 namespace CloudGames.Games.Api.Services;
 
-#if DEBUG
 public class ElasticsearchSyncService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
@@ -19,7 +18,7 @@ public class ElasticsearchSyncService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(2000, stoppingToken); // Wait for API to start
+        await Task.Delay(2000, stoppingToken);
 
         using var scope = _serviceProvider.CreateScope();
         var searchService = scope.ServiceProvider.GetService<ISearchService>();
@@ -27,7 +26,7 @@ public class ElasticsearchSyncService : BackgroundService
 
         if (searchService is not ElasticSearchService elasticService)
         {
-            _logger.LogInformation("Elasticsearch não configurado. Sync automático ignorado.");
+            _logger.LogInformation("Elasticsearch not configured - sync skipped");
             return;
         }
 
@@ -38,18 +37,17 @@ public class ElasticsearchSyncService : BackgroundService
 
             if (gamesList.Count == 0)
             {
-                _logger.LogInformation("Nenhum jogo no banco de dados. Sync ignorado.");
+                _logger.LogInformation("No games in database - sync skipped");
                 return;
             }
 
             await elasticService.IndexGamesAsync(gamesList, stoppingToken);
-            _logger.LogInformation("Elasticsearch sync automático: {Count} jogos indexados", gamesList.Count);
+            _logger.LogInformation("Elasticsearch auto-sync completed: {Count} games indexed", gamesList.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Falha no sync automático do Elasticsearch");
+            _logger.LogWarning(ex, "Elasticsearch auto-sync failed");
         }
     }
 }
-#endif
 

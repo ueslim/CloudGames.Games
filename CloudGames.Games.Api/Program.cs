@@ -124,37 +124,35 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<GamesDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("GamesDb")));
 
-// Register SearchService - ElasticSearch in Development, EF fallback in Production or if Elastic is not configured
+// Register SearchService - Elasticsearch only in Development, EF in Production
 var elasticEndpoint = builder.Configuration["Elastic:Endpoint"];
-var elasticIndexName = builder.Configuration["Elastic:IndexName"];
+var isDevelopment = builder.Environment.IsDevelopment();
 
-if (!string.IsNullOrEmpty(elasticEndpoint))
+if (isDevelopment && !string.IsNullOrEmpty(elasticEndpoint))
 {
-    // ElasticSearch is configured - register it
-    // The service itself will handle connection failures gracefully
+    // Development with Elasticsearch
     builder.Services.AddSingleton<ISearchService, ElasticSearchService>();
-    Log.Information("Search Service: ElasticSearchService configured");
-    Log.Information("Endpoint: {ElasticEndpoint}", elasticEndpoint);
-    Log.Information("Index: {IndexName}", elasticIndexName ?? "games");
-    Log.Information("Requires Elasticsearch running (Docker: docker-compose up -d)");
+    builder.Services.AddHostedService<CloudGames.Games.Api.Services.ElasticsearchSyncService>();
+    Log.Information("Search: Elasticsearch - {Endpoint}", elasticEndpoint);
 }
 else
 {
-    // No ElasticSearch configured - use EF-based search as fallback
+    // Production or Development without Elasticsearch
     builder.Services.AddScoped<ISearchService, EfSearchService>();
-    Log.Information("Search Service: EfSearchService (Entity Framework)");
-    Log.Information("Using SQL Server for search queries");
-    Log.Information("No additional infrastructure required");
+    
+    if (!isDevelopment && !string.IsNullOrEmpty(elasticEndpoint))
+    {
+        Log.Warning("Elasticsearch config ignored in Production - using EF Search");
+    }
+    else
+    {
+        Log.Information("Search: Entity Framework (SQL Server)");
+    }
 }
 
 // Register application services
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IPromotionService, PromotionService>();
-
-#if DEBUG
-// Register Elasticsearch auto-sync service (Development only)
-builder.Services.AddHostedService<CloudGames.Games.Api.Services.ElasticsearchSyncService>();
-#endif
 
 var app = builder.Build();
 

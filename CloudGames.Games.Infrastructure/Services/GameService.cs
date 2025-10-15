@@ -192,9 +192,7 @@ public class GameService : IGameService
             .ToListAsync();
     }
 
-    /// <summary>
-    /// Indexa um jogo no Elasticsearch (apenas em Development quando ElasticSearchService está ativo)
-    /// </summary>
+    // Index game in Elasticsearch if available
     private async Task IndexGameInElasticsearchAsync(Game game)
     {
         if (_searchService is ElasticSearchService elasticService)
@@ -211,9 +209,7 @@ public class GameService : IGameService
         }
     }
 
-    /// <summary>
-    /// Remove um jogo do índice do Elasticsearch (apenas em Development quando ElasticSearchService está ativo)
-    /// </summary>
+    // Delete game from Elasticsearch index if available
     private async Task DeleteGameFromElasticsearchAsync(Guid gameId)
     {
         if (_searchService is ElasticSearchService elasticService)

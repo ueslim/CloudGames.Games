@@ -162,24 +162,33 @@ public class GamesController : ControllerBase
         }
     }
 
-#if DEBUG
     /// <summary>
-    /// Sincroniza todos os jogos do banco de dados para o Elasticsearch (apenas Development)
+    /// Sincroniza jogos para o Elasticsearch (apenas quando configurado)
     /// </summary>
     [HttpPost("sync-search-index")]
+    [Authorize(Roles = "Administrator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> SyncSearchIndex()
     {
         if (_searchService is not ElasticSearchService elasticService)
         {
-            return Ok(new { mensagem = "Elasticsearch não está configurado" });
+            return Ok(new { mensagem = "Elasticsearch não configurado" });
         }
 
-        var games = await _gameService.GetAllGamesAsync();
-        await elasticService.IndexGamesAsync(games);
-        
-        return Ok(new { count = games.Count() });
+        try
+        {
+            var games = await _gameService.GetAllGamesAsync();
+            var gamesList = games.ToList();
+            await elasticService.IndexGamesAsync(gamesList);
+            
+            _logger.LogInformation("Elasticsearch manual sync: {Count} games", gamesList.Count);
+            return Ok(new { count = gamesList.Count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Elasticsearch sync failed");
+            return StatusCode(500, new { mensagem = "Erro ao sincronizar" });
+        }
     }
-#endif
 }
 
