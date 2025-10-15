@@ -156,6 +156,8 @@ builder.Services.AddScoped<IPromotionService, PromotionService>();
 
 var app = builder.Build();
 
+await DatabaseInitializer.EnsureDataBaseMigratedAsync(app.Services);
+
 // Configure middleware pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();

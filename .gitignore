@@ -39,3 +39,4 @@ azurite_data/
 
 # Elasticsearch data (docker volumes)
 elasticsearch_data/
+seed-games-data.sql
