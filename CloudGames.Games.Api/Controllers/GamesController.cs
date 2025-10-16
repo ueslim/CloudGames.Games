@@ -12,15 +12,18 @@ public class GamesController : ControllerBase
     private readonly IGameService _gameService;
     private readonly ISearchService _searchService;
     private readonly ILogger<GamesController> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public GamesController(
         IGameService gameService,
         ISearchService searchService,
-        ILogger<GamesController> logger)
+        ILogger<GamesController> logger,
+        IHttpClientFactory httpClientFactory)
     {
         _gameService = gameService;
         _searchService = searchService;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <summary>
@@ -94,11 +97,12 @@ public class GamesController : ControllerBase
     }
 
     /// <summary>
-    /// Compra um jogo para o usuário
+    /// Compra um jogo para o usuário (inicia processo de pagamento)
     /// </summary>
     [HttpPost("{id}/purchase")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Buy(Guid id, [FromHeader] string? userId)
     {
         // In production, APIM validates the user and passes user info via headers
@@ -110,15 +114,75 @@ public class GamesController : ControllerBase
             _logger.LogWarning("No userId provided, using default for development: {UserId}", userId);
         }
 
+        // Get game details
+        var game = await _gameService.GetGameByIdAsync(id);
+        if (game == null)
+        {
+            _logger.LogWarning("Game {GameId} not found for purchase", id);
+            return NotFound(new { mensagem = "Jogo não encontrado" });
+        }
+
         try
         {
-            await _gameService.BuyGameAsync(id, userId);
-            _logger.LogInformation("Usuário {UserId} comprou o jogo {GameId}", userId, id);
-            return Ok(new { mensagem = "Jogo comprado com sucesso!" });
+            // Call Payments API to initiate payment
+            var httpClient = _httpClientFactory.CreateClient("PaymentsApi");
+            
+            var paymentRequest = new
+            {
+                gameId = id,
+                amount = game.Price
+            };
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/payments")
+            {
+                Content = JsonContent.Create(paymentRequest)
+            };
+            
+            // Forward userId header (APIM pattern)
+            request.Headers.Add("userId", userId);
+
+            _logger.LogInformation("Initiating payment for user {UserId}, game {GameId}, amount {Amount}", 
+                userId, id, game.Price);
+
+            var response = await httpClient.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Payment initiation failed. Status: {StatusCode}", response.StatusCode);
+                return StatusCode(500, new { mensagem = "Falha ao iniciar pagamento" });
+            }
+
+            // Parse response to get paymentId from Location header or response body
+            var location = response.Headers.Location?.ToString();
+            string? paymentId = null;
+            
+            if (!string.IsNullOrEmpty(location))
+            {
+                // Extract payment ID from location: /api/payments/{id}/status
+                var segments = location.Split('/');
+                paymentId = segments.Length >= 4 ? segments[^2] : null;
+            }
+
+            if (string.IsNullOrEmpty(paymentId))
+            {
+                _logger.LogError("Payment initiated but no paymentId returned");
+                return StatusCode(500, new { mensagem = "Erro ao processar pagamento" });
+            }
+
+            _logger.LogInformation("Payment {PaymentId} created for user {UserId} and game {GameId}", 
+                paymentId, userId, id);
+
+            return Ok(new { paymentId });
         }
-        catch (InvalidOperationException ex)
+        catch (HttpRequestException ex)
         {
-            return NotFound(new { mensagem = ex.Message });
+            _logger.LogError(ex, "Error calling Payments API for game {GameId}", id);
+            return StatusCode(500, new { mensagem = "Erro ao conectar com serviço de pagamentos" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error during purchase for game {GameId}", id);
+            return StatusCode(500, new { mensagem = "Erro inesperado ao processar compra" });
         }
     }
 

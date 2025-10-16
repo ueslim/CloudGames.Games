@@ -77,6 +77,14 @@ else
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IPromotionService, PromotionService>();
 
+// Register HttpClient for Payments API
+builder.Services.AddHttpClient("PaymentsApi", client =>
+{
+    var paymentsUrl = builder.Configuration["Services:PaymentsApi"] ?? "http://localhost:5003";
+    client.BaseAddress = new Uri(paymentsUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 var app = builder.Build();
 
 await DatabaseInitializer.EnsureDataBaseMigratedAsync(app.Services);
