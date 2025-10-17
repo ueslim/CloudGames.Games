@@ -80,7 +80,7 @@ public class ElasticSearchService : ISearchService
                             .Keyword(k => k.Name(n => n.Publisher))
                             .Date(d => d.Name(n => n.ReleaseDate))
                             .Number(n => n.Name(n => n.Price).Type(NumberType.ScaledFloat).ScalingFactor(100))
-                            .Number(n => n.Name(n => n.Rating).Type(NumberType.Double))
+                            .Text(t => t.Name(n => n.CoverImageUrl))
                         )
                     )
                 );

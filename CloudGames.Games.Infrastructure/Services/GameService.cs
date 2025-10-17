@@ -88,7 +88,7 @@ public class GameService : IGameService
         existing.Publisher = game.Publisher;
         existing.ReleaseDate = game.ReleaseDate;
         existing.Price = game.Price;
-        existing.Rating = game.Rating;
+        existing.CoverImageUrl = game.CoverImageUrl;
 
         await _context.SaveChangesAsync();
 

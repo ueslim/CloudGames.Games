@@ -1,8 +1,8 @@
-namespace CloudGames.Games.Domain.Entities;
+namespace CloudGames.Games.Api.DTOs;
 
-public class Game
+public class GameDto
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? Genre { get; set; }
@@ -11,4 +11,3 @@ public class Game
     public decimal? Price { get; set; }
     public string? CoverImageUrl { get; set; }
 }
-

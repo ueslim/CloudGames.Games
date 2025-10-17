@@ -26,6 +26,7 @@ public class GamesDbContext : DbContext
             entity.Property(e => e.Genre).HasMaxLength(100);
             entity.Property(e => e.Publisher).HasMaxLength(200);
             entity.Property(e => e.Price).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CoverImageUrl).HasMaxLength(500);
         });
 
         modelBuilder.Entity<Promotion>(entity =>

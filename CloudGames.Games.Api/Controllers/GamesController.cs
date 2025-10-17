@@ -1,6 +1,8 @@
 using CloudGames.Games.Application.Interfaces;
+using CloudGames.Games.Api.DTOs;
 using CloudGames.Games.Domain.Entities;
 using CloudGames.Games.Infrastructure.Services;
+using CloudGames.Games.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CloudGames.Games.Api.Controllers;
@@ -30,54 +32,64 @@ public class GamesController : ControllerBase
     /// Lista todos os jogos disponíveis
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<Game>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<Game>>> GetAll()
+    [ProducesResponseType(typeof(IEnumerable<GameDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<GameDto>>> GetAll()
     {
         var games = await _gameService.GetAllGamesAsync();
-        return Ok(games);
+        return Ok(GameMappingService.ToDto(games));
     }
 
     /// <summary>
     /// Busca um jogo por ID
     /// </summary>
     [HttpGet("{id}")]
-    [ProducesResponseType(typeof(Game), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(GameDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Game>> GetById(Guid id)
+    public async Task<ActionResult<GameDto>> GetById(Guid id)
     {
         var game = await _gameService.GetGameByIdAsync(id);
         if (game == null)
             return NotFound(new { mensagem = "Jogo não encontrado" });
         
-        return Ok(game);
+        return Ok(GameMappingService.ToDto(game));
     }
 
     /// <summary>
     /// Cria um novo jogo
     /// </summary>
     [HttpPost]
-    [ProducesResponseType(typeof(Game), StatusCodes.Status201Created)]
-    public async Task<ActionResult<Game>> Create([FromBody] Game game)
+    [ProducesResponseType(typeof(GameDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<GameDto>> Create([FromBody] CreateGameDto createGameDto)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var game = GameMappingService.ToEntity(createGameDto);
         var created = await _gameService.CreateGameAsync(game);
         _logger.LogInformation("Jogo criado: {GameId} - {Title}", created.Id, created.Title);
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, GameMappingService.ToDto(created));
     }
 
     /// <summary>
     /// Atualiza um jogo existente
     /// </summary>
     [HttpPut("{id}")]
-    [ProducesResponseType(typeof(Game), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(GameDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Game>> Update(Guid id, [FromBody] Game game)
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<GameDto>> Update(Guid id, [FromBody] UpdateGameDto updateGameDto)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var game = GameMappingService.ToEntity(updateGameDto, id);
         var updated = await _gameService.UpdateGameAsync(id, game);
         if (updated == null)
             return NotFound(new { mensagem = "Jogo não encontrado" });
         
         _logger.LogInformation("Jogo atualizado: {GameId}", id);
-        return Ok(updated);
+        return Ok(GameMappingService.ToDto(updated));
     }
 
     /// <summary>
@@ -105,26 +117,26 @@ public class GamesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Buy(Guid id, [FromHeader] string? userId)
     {
-        // In production, APIM validates the user and passes user info via headers
-        // In development, userId can be passed via header for testing
+        // Em produção, APIM valida o usuário e passa informações via headers
+        // Em desenvolvimento, userId pode ser passado via header para testes
         if (string.IsNullOrEmpty(userId))
         {
-            // For development/testing, use a default user ID
+            // Para desenvolvimento/testes, usa um ID de usuário padrão
             userId = "dev-user-001";
-            _logger.LogWarning("No userId provided, using default for development: {UserId}", userId);
+            _logger.LogWarning("Nenhum userId fornecido, usando padrão para desenvolvimento: {UserId}", userId);
         }
 
-        // Get game details
+        // Obtém detalhes do jogo
         var game = await _gameService.GetGameByIdAsync(id);
         if (game == null)
         {
-            _logger.LogWarning("Game {GameId} not found for purchase", id);
+            _logger.LogWarning("Jogo {GameId} não encontrado para compra", id);
             return NotFound(new { mensagem = "Jogo não encontrado" });
         }
 
         try
         {
-            // Call Payments API to initiate payment
+            // Chama API de Pagamentos para iniciar pagamento
             var httpClient = _httpClientFactory.CreateClient("PaymentsApi");
             
             var paymentRequest = new
@@ -138,50 +150,50 @@ public class GamesController : ControllerBase
                 Content = JsonContent.Create(paymentRequest)
             };
             
-            // Forward userId header (APIM pattern)
+            // Encaminha header userId (padrão APIM)
             request.Headers.Add("userId", userId);
 
-            _logger.LogInformation("Initiating payment for user {UserId}, game {GameId}, amount {Amount}", 
+            _logger.LogInformation("Iniciando pagamento para usuario {UserId}, jogo {GameId}, valor {Amount}", 
                 userId, id, game.Price);
 
             var response = await httpClient.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("Payment initiation failed. Status: {StatusCode}", response.StatusCode);
+                _logger.LogError("Falha ao iniciar pagamento. Status: {StatusCode}", response.StatusCode);
                 return StatusCode(500, new { mensagem = "Falha ao iniciar pagamento" });
             }
 
-            // Parse response to get paymentId from Location header or response body
+            // Extrai paymentId do header Location da resposta
             var location = response.Headers.Location?.ToString();
             string? paymentId = null;
             
             if (!string.IsNullOrEmpty(location))
             {
-                // Extract payment ID from location: /api/payments/{id}/status
+                // Extrai ID do pagamento da location: /api/payments/{id}/status
                 var segments = location.Split('/');
                 paymentId = segments.Length >= 4 ? segments[^2] : null;
             }
 
             if (string.IsNullOrEmpty(paymentId))
             {
-                _logger.LogError("Payment initiated but no paymentId returned");
+                _logger.LogError("Pagamento iniciado mas nenhum paymentId foi retornado");
                 return StatusCode(500, new { mensagem = "Erro ao processar pagamento" });
             }
 
-            _logger.LogInformation("Payment {PaymentId} created for user {UserId} and game {GameId}", 
+            _logger.LogInformation("Pagamento {PaymentId} criado para usuario {UserId} e jogo {GameId}", 
                 paymentId, userId, id);
 
             return Ok(new { paymentId });
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Error calling Payments API for game {GameId}", id);
+            _logger.LogError(ex, "Erro ao chamar API de Pagamentos para jogo {GameId}", id);
             return StatusCode(500, new { mensagem = "Erro ao conectar com serviço de pagamentos" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error during purchase for game {GameId}", id);
+            _logger.LogError(ex, "Erro inesperado durante compra do jogo {GameId}", id);
             return StatusCode(500, new { mensagem = "Erro inesperado ao processar compra" });
         }
     }
@@ -190,9 +202,9 @@ public class GamesController : ControllerBase
     /// Busca jogos por termo de pesquisa
     /// </summary>
     [HttpGet("search")]
-    [ProducesResponseType(typeof(IEnumerable<Game>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IEnumerable<GameDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<IEnumerable<Game>>> Search(
+    public async Task<ActionResult<IEnumerable<GameDto>>> Search(
         [FromQuery] string query, 
         CancellationToken cancellationToken)
     {
@@ -204,7 +216,7 @@ public class GamesController : ControllerBase
             _logger.LogInformation("Buscando jogos com query: {Query}", query);
             var games = await _searchService.SearchGamesAsync(query, cancellationToken);
             _logger.LogInformation("Encontrados {Count} jogos para query: {Query}", games.Count(), query);
-            return Ok(games);
+            return Ok(GameMappingService.ToDto(games));
         }
         catch (Exception ex)
         {

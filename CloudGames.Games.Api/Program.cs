@@ -85,6 +85,17 @@ builder.Services.AddHttpClient("PaymentsApi", client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+// Register Azure Storage Queue for payment events
+builder.Services.AddSingleton(sp =>
+{
+    var storageConn = builder.Configuration.GetConnectionString("Storage") ?? "UseDevelopmentStorage=true";
+    var queueName = builder.Configuration["Queues:Payments"] ?? "payments-events";
+    return new Azure.Storage.Queues.QueueClient(storageConn, queueName);
+});
+
+// Register Payment Event Consumer background service
+builder.Services.AddHostedService<CloudGames.Games.Api.Services.PaymentEventConsumer>();
+
 var app = builder.Build();
 
 await DatabaseInitializer.EnsureDataBaseMigratedAsync(app.Services);
