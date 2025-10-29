@@ -4,6 +4,8 @@ using CloudGames.Games.Domain.Entities;
 using CloudGames.Games.Infrastructure.Services;
 using CloudGames.Games.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using CloudGames.Games.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace CloudGames.Games.Api.Controllers;
 
@@ -15,17 +17,20 @@ public class GamesController : ControllerBase
     private readonly ISearchService _searchService;
     private readonly ILogger<GamesController> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly GamesDbContext _context;
 
     public GamesController(
         IGameService gameService,
         ISearchService searchService,
         ILogger<GamesController> logger,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        GamesDbContext context)
     {
         _gameService = gameService;
         _searchService = searchService;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _context = context;
     }
 
     /// <summary>
@@ -36,7 +41,12 @@ public class GamesController : ControllerBase
     public async Task<ActionResult<IEnumerable<GameDto>>> GetAll()
     {
         var games = await _gameService.GetAllGamesAsync();
-        return Ok(GameMappingService.ToDto(games));
+        var gameDtos = GameMappingService.ToDto(games).ToList();
+        
+        // Aplicar promoções ativas
+        await ApplyActivePromotionsAsync(gameDtos);
+        
+        return Ok(gameDtos);
     }
 
     /// <summary>
@@ -51,7 +61,12 @@ public class GamesController : ControllerBase
         if (game == null)
             return NotFound(new { mensagem = "Jogo não encontrado" });
         
-        return Ok(GameMappingService.ToDto(game));
+        var gameDto = GameMappingService.ToDto(game);
+        
+        // Aplicar promoção ativa se existir
+        await ApplyActivePromotionsAsync(new List<GameDto> { gameDto });
+        
+        return Ok(gameDto);
     }
 
     /// <summary>
@@ -136,13 +151,28 @@ public class GamesController : ControllerBase
 
         try
         {
+            // Verificar se há promoção ativa
+            var now = DateTime.UtcNow;
+            var activePromotion = await _context.Promotions
+                .Where(p => p.GameId == id && p.StartDate <= now && p.EndDate >= now)
+                .FirstOrDefaultAsync();
+            
+            // Calcular preço final (com promoção ou sem)
+            var finalPrice = game.Price;
+            if (activePromotion != null && game.Price.HasValue)
+            {
+                finalPrice = game.Price.Value * (1 - activePromotion.DiscountPercentage / 100);
+                _logger.LogInformation("Promoção ativa aplicada: {Discount}% de desconto. Preço original: {OriginalPrice}, Preço final: {FinalPrice}", 
+                    activePromotion.DiscountPercentage, game.Price, finalPrice);
+            }
+            
             // Chama API de Pagamentos para iniciar pagamento
             var httpClient = _httpClientFactory.CreateClient("PaymentsApi");
             
             var paymentRequest = new
             {
                 gameId = id,
-                amount = game.Price
+                amount = finalPrice
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, "/api/payments")
@@ -154,7 +184,7 @@ public class GamesController : ControllerBase
             request.Headers.Add("userId", userId);
 
             _logger.LogInformation("Iniciando pagamento para usuario {UserId}, jogo {GameId}, valor {Amount}", 
-                userId, id, game.Price);
+                userId, id, finalPrice);
 
             var response = await httpClient.SendAsync(request);
 
@@ -216,7 +246,13 @@ public class GamesController : ControllerBase
             _logger.LogInformation("Buscando jogos com query: {Query}", query);
             var games = await _searchService.SearchGamesAsync(query, cancellationToken);
             _logger.LogInformation("Encontrados {Count} jogos para query: {Query}", games.Count(), query);
-            return Ok(GameMappingService.ToDto(games));
+            
+            var gameDtos = GameMappingService.ToDto(games).ToList();
+            
+            // Aplicar promoções ativas
+            await ApplyActivePromotionsAsync(gameDtos);
+            
+            return Ok(gameDtos);
         }
         catch (Exception ex)
         {
@@ -251,6 +287,34 @@ public class GamesController : ControllerBase
         {
             _logger.LogError(ex, "Elasticsearch sync failed");
             return StatusCode(500, new { mensagem = "Erro ao sincronizar" });
+        }
+    }
+    
+    /// <summary>
+    /// Aplica promoções ativas aos jogos
+    /// </summary>
+    private async Task ApplyActivePromotionsAsync(List<GameDto> gameDtos)
+    {
+        if (gameDtos == null || !gameDtos.Any())
+            return;
+        
+        var gameIds = gameDtos.Select(g => g.Id).ToList();
+        var now = DateTime.UtcNow;
+        
+        // Buscar promoções ativas para os jogos
+        var activePromotions = await _context.Promotions
+            .Where(p => gameIds.Contains(p.GameId) && p.StartDate <= now && p.EndDate >= now)
+            .ToListAsync();
+        
+        // Aplicar promoções aos DTOs
+        foreach (var gameDto in gameDtos)
+        {
+            var promotion = activePromotions.FirstOrDefault(p => p.GameId == gameDto.Id);
+            if (promotion != null && gameDto.Price.HasValue)
+            {
+                gameDto.DiscountPercentage = promotion.DiscountPercentage;
+                gameDto.PromotionalPrice = gameDto.Price.Value * (1 - promotion.DiscountPercentage / 100);
+            }
         }
     }
 }

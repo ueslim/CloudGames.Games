@@ -62,40 +62,39 @@ public class PaymentEventConsumer : BackgroundService
                 {
                     try
                     {
-                        // Deserializa evento
-                        var eventData = JsonSerializer.Deserialize<PaymentApprovedEvent>(message.MessageText);
+                        var eventData = message.Body.ToObjectFromJson<PaymentApprovedEvent>();
 
-                        if (eventData?.EventType == "PaymentApproved")
+                        if (eventData != null)
                         {
                             _logger.LogInformation(
-                                "Evento PaymentApproved recebido - Usuario: {UserId}, Jogo: {GameId}",
-                                eventData.UserId, eventData.GameId);
+                                "Evento recebido - Usuario: {UserId}, Jogo: {GameId}, Valor pago: {Amount}",
+                                eventData.UserId, eventData.GameId, eventData.Amount);
 
-                            // Adiciona jogo à biblioteca do usuário
                             using var scope = _serviceProvider.CreateScope();
                             var gameService = scope.ServiceProvider.GetRequiredService<IGameService>();
                             
-                            // Usa UserId como string (converte Guid para string)
-                            await gameService.BuyGameAsync(eventData.GameId, eventData.UserId.ToString());
+                            // Passa o valor efetivamente pago (com desconto se aplicável)
+                            await gameService.BuyGameAsync(eventData.GameId, eventData.UserId.ToString(), eventData.Amount);
 
                             _logger.LogInformation(
-                                "Jogo {GameId} adicionado à biblioteca do usuario {UserId}",
-                                eventData.GameId, eventData.UserId);
+                                "Jogo {GameId} adicionado à biblioteca do usuario {UserId} com valor {Amount}",
+                                eventData.GameId, eventData.UserId, eventData.Amount);
 
-                            // Remove mensagem da fila (confirma processamento)
                             await _queueClient.DeleteMessageAsync(
                                 message.MessageId,
                                 message.PopReceipt,
                                 stoppingToken);
                         }
+                        else
+                        {
+                            _logger.LogWarning("Mensagem inválida, removendo da fila: {MessageId}", message.MessageId);
+                            await _queueClient.DeleteMessageAsync(message.MessageId, message.PopReceipt, stoppingToken);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex,
-                            "Erro ao processar evento de pagamento. MessageId: {MessageId}",
-                            message.MessageId);
-                        
-                        // Mensagem volta para a fila automaticamente após timeout de visibilidade
+                        _logger.LogError(ex, "Erro ao processar evento. MessageId: {MessageId}", message.MessageId);
+                        await _queueClient.DeleteMessageAsync(message.MessageId, message.PopReceipt, stoppingToken);
                     }
                 }
 
@@ -113,12 +112,10 @@ public class PaymentEventConsumer : BackgroundService
 
         private class PaymentApprovedEvent
         {
-            public string EventType { get; set; } = string.Empty;
             public Guid PaymentId { get; set; }
             public Guid UserId { get; set; }
             public Guid GameId { get; set; }
             public decimal Amount { get; set; }
-            public DateTime Timestamp { get; set; }
         }
 }
 

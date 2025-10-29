@@ -9,7 +9,7 @@ public interface IGameService
     Task<Game> CreateGameAsync(Game game);
     Task<Game?> UpdateGameAsync(Guid id, Game game);
     Task<bool> DeleteGameAsync(Guid id);
-    Task BuyGameAsync(Guid gameId, string userId);
+    Task BuyGameAsync(Guid gameId, string userId, decimal paidAmount);
     Task<IEnumerable<Game>> GetUserLibraryAsync(string userId);
 }
 

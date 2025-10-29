@@ -90,7 +90,10 @@ builder.Services.AddSingleton(sp =>
 {
     var storageConn = builder.Configuration.GetConnectionString("Storage") ?? "UseDevelopmentStorage=true";
     var queueName = builder.Configuration["Queues:Payments"] ?? "payments-events";
-    return new Azure.Storage.Queues.QueueClient(storageConn, queueName);
+    return new Azure.Storage.Queues.QueueClient(storageConn, queueName, new Azure.Storage.Queues.QueueClientOptions
+    {
+        MessageEncoding = Azure.Storage.Queues.QueueMessageEncoding.Base64
+    });
 });
 
 // Register Payment Event Consumer background service

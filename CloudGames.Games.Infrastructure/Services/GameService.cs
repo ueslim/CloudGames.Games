@@ -115,19 +115,19 @@ public class GameService : IGameService
         return true;
     }
 
-    public async Task BuyGameAsync(Guid gameId, string userId)
+    public async Task BuyGameAsync(Guid gameId, string userId, decimal paidAmount)
     {
         var game = await _context.Games.FindAsync(gameId);
         if (game == null)
             throw new InvalidOperationException("Jogo não encontrado");
 
-        // Criar evento GamePurchased
+        // Criar evento GamePurchased com o valor efetivamente pago (com desconto se aplicável)
         var gamePurchasedEvent = new
         {
             GameId = gameId,
             UserId = userId,
             PurchasedAt = DateTime.UtcNow,
-            Price = game.Price
+            Price = paidAmount
         };
 
         var eventData = JsonSerializer.Serialize(gamePurchasedEvent);

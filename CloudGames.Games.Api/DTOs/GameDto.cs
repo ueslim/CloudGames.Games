@@ -10,4 +10,6 @@ public class GameDto
     public DateTime? ReleaseDate { get; set; }
     public decimal? Price { get; set; }
     public string? CoverImageUrl { get; set; }
+    public decimal? PromotionalPrice { get; set; }
+    public decimal? DiscountPercentage { get; set; }
 }

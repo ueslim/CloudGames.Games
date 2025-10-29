@@ -56,6 +56,7 @@ public class ElasticSearchService : ISearchService
     {
         try
         {
+            _logger.LogInformation("Checking Elasticsearch availability...");
             var pingResponse = await _elasticClient.PingAsync();
             if (!pingResponse.IsValid)
             {
@@ -63,8 +64,10 @@ public class ElasticSearchService : ISearchService
                 _isAvailable = false;
                 return;
             }
+            _logger.LogInformation("Elasticsearch ping successful");
 
             var indexExists = await _elasticClient.Indices.ExistsAsync(_indexName);
+            _logger.LogInformation("Index '{IndexName}' exists: {Exists}", _indexName, indexExists.Exists);
             
             if (!indexExists.Exists)
             {
@@ -94,8 +97,13 @@ public class ElasticSearchService : ISearchService
                 
                 _logger.LogInformation("Successfully created Elasticsearch index: {IndexName}", _indexName);
             }
+            else
+            {
+                _logger.LogInformation("Elasticsearch index '{IndexName}' already exists", _indexName);
+            }
             
             _isAvailable = true;
+            _logger.LogInformation("Elasticsearch marked as AVAILABLE");
         }
         catch (Exception ex)
         {
