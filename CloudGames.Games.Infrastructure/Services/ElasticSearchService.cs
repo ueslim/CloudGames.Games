@@ -36,11 +36,11 @@ public class ElasticSearchService : ISearchService
                     .IdProperty(p => p.Id)
                 )
                 .DisableDirectStreaming() // Helps with debugging
-                .RequestTimeout(TimeSpan.FromSeconds(5)); // Timeout for initial connection
+                .RequestTimeout(TimeSpan.FromSeconds(30)); // Timeout increased to wait for Elasticsearch startup
 
             _elasticClient = new ElasticClient(settings);
             
-            // Ensure the index exists with proper mappings
+            // Ensure the index exists with proper mappings (with retry logic)
             EnsureIndexExistsAsync().GetAwaiter().GetResult();
             _logger.LogInformation("ElasticSearch service initialized successfully with endpoint: {Endpoint}, index: {IndexName}", endpoint, _indexName);
         }
@@ -54,18 +54,46 @@ public class ElasticSearchService : ISearchService
 
     private async Task EnsureIndexExistsAsync()
     {
-        try
+        const int maxRetries = 10;
+        const int delaySeconds = 3;
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            _logger.LogInformation("Checking Elasticsearch availability...");
-            var pingResponse = await _elasticClient.PingAsync();
-            if (!pingResponse.IsValid)
+            try
             {
-                _logger.LogWarning("Failed to ping Elasticsearch: {Error}", pingResponse.DebugInformation);
+                _logger.LogInformation("Checking Elasticsearch availability... (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
+                var pingResponse = await _elasticClient.PingAsync();
+                if (!pingResponse.IsValid)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        _logger.LogWarning("Failed to ping Elasticsearch (attempt {Attempt}/{MaxRetries}), retrying in {Delay}s...", attempt, maxRetries, delaySeconds);
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                        continue;
+                    }
+                    _logger.LogWarning("Failed to ping Elasticsearch after {MaxRetries} attempts: {Error}", maxRetries, pingResponse.DebugInformation);
+                    _isAvailable = false;
+                    return;
+                }
+                _logger.LogInformation("Elasticsearch ping successful");
+                break;
+            }
+            catch (Exception ex)
+            {
+                if (attempt < maxRetries)
+                {
+                    _logger.LogWarning(ex, "Error pinging Elasticsearch (attempt {Attempt}/{MaxRetries}), retrying in {Delay}s...", attempt, maxRetries, delaySeconds);
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                    continue;
+                }
+                _logger.LogError(ex, "Error pinging Elasticsearch after {MaxRetries} attempts", maxRetries);
                 _isAvailable = false;
                 return;
             }
-            _logger.LogInformation("Elasticsearch ping successful");
-
+        }
+        
+        try
+        {
             var indexExists = await _elasticClient.Indices.ExistsAsync(_indexName);
             _logger.LogInformation("Index '{IndexName}' exists: {Exists}", _indexName, indexExists.Exists);
             
